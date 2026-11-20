@@ -4,4 +4,4 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 ENV PORT=8080
-CMD ["sh", "-c", "streamlit run app/main.py --server.address 0.0.0.0 --server.port ${PORT}"]
+CMD ["sh", "-c", "python -m streamlit run app/main.py --server.address 0.0.0.0 --server.port ${PORT}"]

@@ -1,6 +1,8 @@
 """Train, probe, and compress a small retail basket language model."""
 
 
+from io import BytesIO
+
 import numpy as np
 
 
@@ -133,15 +135,11 @@ def milestone_3(model, basket, training_baskets, top_k=5):
 
 def milestone_4(model, test_baskets):
     """Measure uncompressed checkpoint bytes and held-out next-item accuracy."""
-    from io import BytesIO
-
     contexts, targets = _examples(test_baskets)
     logits = _exclude_selected(_logits(model, contexts), contexts)
     ranked = np.argsort(-logits, axis=1, kind="stable")
-    checkpoint = BytesIO()
-    np.savez(checkpoint, **model)
     return {
-        "bytes": checkpoint.tell(),
+        "bytes": len(checkpoint_bytes(model)),
         "top_1": float(np.mean(ranked[:, 0] == targets)),
         "top_5": float(np.mean(np.any(ranked[:, :5] == targets[:, None], axis=1))),
         "examples": len(targets),
@@ -183,3 +181,27 @@ def milestone_5(model, calibration_baskets):
     hidden = np.tanh(_integer_linear(contexts, static, "w1", "b1", "input_scale"))
     static["hidden_scale"] = _scale(hidden)
     return {"Dynamic INT8": dynamic, "Static INT8": static}
+
+
+def checkpoint_bytes(model):
+    """Serialize a model to an uncompressed NPZ without pickle objects."""
+    checkpoint = BytesIO()
+    np.savez(checkpoint, **model)
+    return checkpoint.getvalue()
+
+
+def milestone_6(baseline, quantized_models, test_baskets):
+    """Compare checkpoint size and accuracy using identical held-out targets."""
+    results = {"FP32": baseline}
+    results.update(
+        (name, milestone_4(model, test_baskets)) for name, model in quantized_models.items()
+    )
+    return {
+        name: {
+            **metrics,
+            "reduction_pct": 100 * (1 - metrics["bytes"] / baseline["bytes"]),
+            "top_1_delta_pp": 100 * (metrics["top_1"] - baseline["top_1"]),
+            "top_5_delta_pp": 100 * (metrics["top_5"] - baseline["top_5"]),
+        }
+        for name, metrics in results.items()
+    }
