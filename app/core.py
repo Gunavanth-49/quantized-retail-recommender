@@ -1,36 +1,36 @@
-"""Your code. One stub per milestone; build them in order and keep each one small."""
-
-# --- Milestone 1: Prepare synthetic shopping basket data for training
-# Hint: Use the data preparation methods from `Teach a Language Model What Sells Together`.
-def milestone_1():  # TODO(milestone 1)
-    raise NotImplementedError("TODO(milestone 1)")
+"""Train, probe, and compress a small retail basket language model."""
 
 
-# --- Milestone 2: Continue pretraining a small LM on the basket data
-# Hint: Apply the continued pretraining techniques from `Teach a Language Model What Sells Together`.
-def milestone_2():  # TODO(milestone 2)
-    raise NotImplementedError("TODO(milestone 2)")
+import numpy as np
 
 
-# --- Milestone 3: Implement next-item prediction and itemset probing
-# Hint: Implement the prediction and probing methods from `Teach a Language Model What Sells Together`.
-def milestone_3():  # TODO(milestone 3)
-    raise NotImplementedError("TODO(milestone 3)")
+THEMES = (
+    ("Bread", "Butter", "Jam", "Eggs", "Milk", "Yogurt", "Oats", "Honey"),
+    ("Pasta", "Tomato Sauce", "Parmesan", "Basil", "Olive Oil", "Garlic", "Onion", "Mushrooms"),
+    ("Tortillas", "Black Beans", "Salsa", "Avocado", "Lime", "Cheddar", "Rice", "Corn"),
+    ("Coffee", "Cream", "Sugar", "Biscuits", "Cocoa", "Tea", "Lemon", "Muffins"),
+)
+CATALOG = tuple(sorted({item for theme in THEMES for item in theme}))
+ITEM_ID = {item: idx for idx, item in enumerate(CATALOG)}
 
 
-# --- Milestone 4: Measure the baseline size and accuracy of the model
-# Hint: Evaluate the model's performance and size as shown in `Teach a Language Model What Sells Together`.
-def milestone_4():  # TODO(milestone 4)
-    raise NotImplementedError("TODO(milestone 4)")
+def _baskets(rng, count, target_store):
+    baskets = []
+    for _ in range(count):
+        theme = THEMES[rng.integers(len(THEMES))]
+        pool = theme[:5] if target_store and rng.random() < 0.8 else theme
+        basket = rng.choice(pool, size=rng.integers(3, 6), replace=False).tolist()
+        if rng.random() < 0.15:
+            basket.append(rng.choice(sorted(set(CATALOG) - set(basket))).item())
+        baskets.append(tuple(basket))
+    return baskets
 
 
-# --- Milestone 5: Apply dynamic and static post-training quantization to the model
-# Hint: Apply the dynamic and static quantization techniques from `Shrink a Neural Network with Quantisation`.
-def milestone_5():  # TODO(milestone 5)
-    raise NotImplementedError("TODO(milestone 5)")
-
-
-# --- Milestone 6: Demonstrate size reduction and evaluate accuracy impact
-# Hint: Measure the size reduction and accuracy impact as demonstrated in `Shrink a Neural Network with Quantisation`.
-def milestone_6():  # TODO(milestone 6)
-    raise NotImplementedError("TODO(milestone 6)")
+def milestone_1(seed=42, sizes=(800, 1000, 200, 300)):
+    """Generate source pretraining, target training, calibration, and test splits."""
+    streams = np.random.SeedSequence(seed).spawn(4)
+    names = ("source", "train", "calibration", "test")
+    return {
+        name: _baskets(np.random.default_rng(stream), count, target_store=name != "source")
+        for name, stream, count in zip(names, streams, sizes, strict=True)
+    }
