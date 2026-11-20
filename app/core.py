@@ -88,3 +88,41 @@ def milestone_2(splits, seed=42, source_epochs=12, target_epochs=12):
     adapted = {name: value.copy() for name, value in source.items()}
     _fit(adapted, splits["train"], rng, target_epochs, 0.25)
     return source, adapted
+
+
+def _logits(model, contexts):
+    hidden = np.tanh(contexts @ model["w1"] + model["b1"])
+    return hidden @ model["w2"] + model["b2"]
+
+
+def _exclude_selected(logits, contexts):
+    return np.where(contexts > 0, -np.inf, logits)
+
+
+def milestone_3(model, basket, training_baskets, top_k=5):
+    """Rank unseen items and calculate empirical support for the selected itemset."""
+    items = set(basket)
+    if not items or items - ITEM_ID.keys():
+        raise ValueError("Select one or more catalog items.")
+    if top_k < 1 or not training_baskets:
+        raise ValueError("Provide a positive recommendation count and training baskets.")
+    context = np.zeros((1, len(CATALOG)), dtype=np.float32)
+    context[0, [ITEM_ID[item] for item in items]] = 1 / len(items)
+    remaining = len(CATALOG) - len(items)
+    recommendations = []
+    if remaining:
+        scores = _softmax(_exclude_selected(_logits(model, context), context))[0]
+        order = np.argsort(-scores, kind="stable")[:min(top_k, remaining)]
+        recommendations = [
+            {"item": CATALOG[index], "probability": float(scores[index])} for index in order
+        ]
+    matches = sum(items.issubset(row) for row in training_baskets)
+    for entry in recommendations:
+        expanded = items | {entry["item"]}
+        joint = sum(expanded.issubset(row) for row in training_baskets)
+        entry["confidence"] = joint / matches if matches else None
+    return {
+        "recommendations": recommendations,
+        "matches": matches,
+        "support": matches / len(training_baskets),
+    }
