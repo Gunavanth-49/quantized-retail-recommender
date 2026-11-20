@@ -126,3 +126,20 @@ def milestone_3(model, basket, training_baskets, top_k=5):
         "matches": matches,
         "support": matches / len(training_baskets),
     }
+
+
+def milestone_4(model, test_baskets):
+    """Measure uncompressed checkpoint bytes and held-out next-item accuracy."""
+    from io import BytesIO
+
+    contexts, targets = _examples(test_baskets)
+    logits = _exclude_selected(_logits(model, contexts), contexts)
+    ranked = np.argsort(-logits, axis=1, kind="stable")
+    checkpoint = BytesIO()
+    np.savez(checkpoint, **model)
+    return {
+        "bytes": checkpoint.tell(),
+        "top_1": float(np.mean(ranked[:, 0] == targets)),
+        "top_5": float(np.mean(np.any(ranked[:, :5] == targets[:, None], axis=1))),
+        "examples": len(targets),
+    }
