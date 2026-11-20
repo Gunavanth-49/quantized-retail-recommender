@@ -91,6 +91,9 @@ def milestone_2(splits, seed=42, source_epochs=12, target_epochs=12):
 
 
 def _logits(model, contexts):
+    if "w1_scale" in model:
+        hidden = np.tanh(_integer_linear(contexts, model, "w1", "b1", "input_scale"))
+        return _integer_linear(hidden, model, "w2", "b2", "hidden_scale")
     hidden = np.tanh(contexts @ model["w1"] + model["b1"])
     return hidden @ model["w2"] + model["b2"]
 
@@ -143,3 +146,40 @@ def milestone_4(model, test_baskets):
         "top_5": float(np.mean(np.any(ranked[:, :5] == targets[:, None], axis=1))),
         "examples": len(targets),
     }
+
+
+def _scale(values, axis=None, keepdims=False):
+    peak = np.max(np.abs(values), axis=axis, keepdims=keepdims)
+    return np.maximum(peak / np.float32(127), np.finfo(np.float32).tiny)
+
+
+def _int8(values, scale):
+    return np.clip(np.rint(values / scale), -127, 127).astype(np.int8)
+
+
+def _integer_linear(values, model, weight, bias, activation_key):
+    activation_scale = (
+        model[activation_key] if activation_key in model
+        else _scale(values, axis=1, keepdims=True)
+    )
+    quantized_input = _int8(values, activation_scale)
+    accumulated = np.matmul(quantized_input, model[weight], dtype=np.int32)
+    return (
+        accumulated.astype(np.float32) * activation_scale * model[weight + "_scale"]
+        + model[bias]
+    )
+
+
+def milestone_5(model, calibration_baskets):
+    """Build dynamic and calibrated static INT8 dense layers from the FP32 model."""
+    dynamic = {name: model[name].copy() for name in ("b1", "b2")}
+    for weight in ("w1", "w2"):
+        scale = _scale(model[weight], axis=0)
+        dynamic[weight + "_scale"] = scale
+        dynamic[weight] = _int8(model[weight], scale)
+    contexts, _ = _examples(calibration_baskets)
+    # Calibrate the second layer using the same quantized first layer used at inference.
+    static = dict(dynamic, input_scale=_scale(contexts))
+    hidden = np.tanh(_integer_linear(contexts, static, "w1", "b1", "input_scale"))
+    static["hidden_scale"] = _scale(hidden)
+    return {"Dynamic INT8": dynamic, "Static INT8": static}
